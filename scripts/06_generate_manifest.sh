@@ -36,7 +36,9 @@ commit_hash="unknown"
 repo_root="$(cd "$(dirname "${artifact_dir}")" && pwd)"
 if command -v git >/dev/null 2>&1; then
   if git -C "${repo_root}" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-    commit_hash="$(git -C "${repo_root}" rev-parse HEAD 2>/dev/null || echo unknown)"
+    if git -C "${repo_root}" rev-parse --verify HEAD >/dev/null 2>&1; then
+      commit_hash="$(git -C "${repo_root}" rev-parse HEAD)"
+    fi
   fi
 fi
 
