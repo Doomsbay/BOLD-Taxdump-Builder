@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-output_dir="${1:-artifacts}"
+output_dir="${1:-releases}"
 taxdump_dir="${2:-bolddb-taxdump}"
 marker_dir="${3:-marker_fastas}"
 version_tag="${4:-}"
@@ -28,7 +28,7 @@ if [[ -s "${marker_zip}" ]]; then
 fi
 
 if [[ "${need_taxdump}" == "false" && "${need_marker}" == "false" ]]; then
-  echo "Zip artifacts already exist, skipping: ${output_dir}" >&2
+  echo "Release packages already exist, skipping: ${output_dir}" >&2
   exit 0
 fi
 

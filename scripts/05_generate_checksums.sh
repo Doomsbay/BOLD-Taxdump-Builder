@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-artifact_dir="${1:-artifacts}"
+artifact_dir="${1:-releases}"
 output_file="${2:-${artifact_dir}/SHA256SUMS.txt}"
 
 if [[ ! -d "${artifact_dir}" ]]; then

@@ -35,7 +35,7 @@ marker_fastas/
   16S.fasta
   ...
 
-artifacts/
+releases/
   bolddb-taxdump.<snapshot>.zip
   marker_fastas.<snapshot>.zip
   manifest.json
@@ -112,7 +112,7 @@ bash bolddb-taxdump.sh \
 With `--package`, you will also get:
 
 ```
-artifacts/
+releases/
 ```
 
 ## Detailed workflow
@@ -122,8 +122,8 @@ artifacts/
 2) Builds an NCBI-style taxdump (`nodes.dmp`, `names.dmp`, `taxid.map`).
 3) Splits sequences into per-marker FASTA files in `marker_fastas/`.
 4) Packages `bolddb-taxdump/` and `marker_fastas/` into versioned zip files (when `--package` is set).
-5) Generates `artifacts/manifest.json` (when `--package` is set).
-6) Writes `artifacts/SHA256SUMS.txt` (when `--package` is set).
+5) Generates `releases/manifest.json` (when `--package` is set).
+6) Writes `releases/SHA256SUMS.txt` (when `--package` is set).
 
 You can skip the manifest and/or checksums (only applies when using `--package`):
 
@@ -137,7 +137,7 @@ bash bolddb-taxdump.sh \
 
 The script also accepts positional arguments in this order:
 
-`input_tsv taxonkit_input taxdump_dir marker_dir artifacts_dir`
+`input_tsv taxonkit_input taxdump_dir marker_dir releases_dir`
 
 ## Scripted steps
 Workflow scripts live in `scripts/`:
@@ -165,21 +165,21 @@ bash scripts/03_build_marker_fastas.sh \
   marker_fastas
 
 bash scripts/04_package_reference_db.sh \
-  artifacts \
+  releases \
   bolddb-taxdump \
   marker_fastas \
   BOLD_Public.26-Sep-2025
 
 bash scripts/05_generate_checksums.sh \
-  artifacts \
-  artifacts/SHA256SUMS.txt
+  releases \
+  releases/SHA256SUMS.txt
 
 bash scripts/06_generate_manifest.sh \
-  artifacts \
+  releases \
   bolddb-taxdump \
   marker_fastas \
   BOLD_Public.26-Sep-2025 \
-  artifacts/manifest.json
+  releases/manifest.json
 
 ```
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-artifact_dir="${1:-artifacts}"
+artifact_dir="${1:-releases}"
 taxdump_dir="${2:-bolddb-taxdump}"
 marker_dir="${3:-marker_fastas}"
 snapshot_id="${4:-}"
