@@ -6,6 +6,11 @@ taxdump_dir="${2:-bolddb-taxdump}"
 marker_dir="${3:-marker_fastas}"
 version_tag="${4:-}"
 
+# Create output directory immediately so we can resolve its absolute path
+mkdir -p "${output_dir}"
+# Resolve output_dir to absolute path because we will change directories later
+output_dir="$(cd "${output_dir}" && pwd)"
+
 taxdump_name="$(basename "${taxdump_dir}")"
 marker_name="$(basename "${marker_dir}")"
 
@@ -20,6 +25,7 @@ marker_zip="${output_dir}/${marker_name}${suffix}.zip"
 
 need_taxdump="true"
 need_marker="true"
+
 if [[ -s "${taxdump_zip}" ]]; then
   need_taxdump="false"
 fi
@@ -42,16 +48,34 @@ if [[ ! -d "${marker_dir}" ]]; then
   exit 1
 fi
 
-mkdir -p "${output_dir}"
-
 if ! command -v zip >/dev/null 2>&1; then
   echo "zip not found in PATH" >&2
   exit 1
 fi
 
+# Function to safely zip a directory from its parent
+# usage: zip_dir "path/to/target_dir" "absolute/path/to/output.zip"
+zip_dir() {
+  local target="$1"
+  local output="$2"
+  local parent
+  local name
+
+  # Get the absolute parent path to cd into
+  parent="$(cd "$(dirname "${target}")" && pwd)"
+  name="$(basename "${target}")"
+
+  echo "Zipping ${name} into ${output}..."
+  (
+    cd "${parent}"
+    zip -r -q "${output}" "${name}"
+  )
+}
+
 if [[ "${need_taxdump}" == "true" ]]; then
-  zip -r "${taxdump_zip}" "${taxdump_dir}"
+  zip_dir "${taxdump_dir}" "${taxdump_zip}"
 fi
+
 if [[ "${need_marker}" == "true" ]]; then
-  zip -r "${marker_zip}" "${marker_dir}"
+  zip_dir "${marker_dir}" "${marker_zip}"
 fi
