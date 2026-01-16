@@ -1,8 +1,22 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-input_tsv="${1:-BOLD_Public.26-Sep-2025/BOLD_Public.26-Sep-2025.tsv}"
+input_tsv="${1:-./BOLD_Public.*/BOLD_Public.*.tsv}"
 output_tsv="${2:-taxonkit_input.tsv}"
+
+if [[ "${input_tsv}" == *"*"* ]]; then
+  matches=( ${input_tsv} )
+  if (( ${#matches[@]} == 0 )); then
+    echo "Input TSV not found: ${input_tsv}" >&2
+    exit 1
+  fi
+  if (( ${#matches[@]} > 1 )); then
+    echo "Input TSV glob matched multiple files; pass explicit path." >&2
+    printf '  %s\n' "${matches[@]}" >&2
+    exit 1
+  fi
+  input_tsv="${matches[0]}"
+fi
 
 if [[ -s "${output_tsv}" ]]; then
   echo "Output exists, skipping: ${output_tsv}" >&2

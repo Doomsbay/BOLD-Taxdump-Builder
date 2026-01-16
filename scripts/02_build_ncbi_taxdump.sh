@@ -2,7 +2,7 @@
 set -euo pipefail
 
 input_tsv="${1:-taxonkit_input.tsv}"
-output_dir="${2:-bolddb-taxdump}"
+output_dir="${2:-bold-taxdump}"
 accession_col="${3:-10}"
 
 if [[ -s "${output_dir}/nodes.dmp" && -s "${output_dir}/names.dmp" && -s "${output_dir}/taxid.map" ]]; then

@@ -1,6 +1,5 @@
-/BOLD_Public.26-Sep-2025/
-/bolddb-taxdump/
-/marker_fastas/
-/taxonkit_input.tsv
-/releases/
-/artifacts/
+BOLD_Public.26-Sep-2025/
+releases/
+boldkit/dist
+boldkit/binaries
+wiki
