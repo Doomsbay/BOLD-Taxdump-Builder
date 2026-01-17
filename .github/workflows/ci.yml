@@ -61,7 +61,7 @@ jobs:
         run: go vet ./...
 
       - name: Run go build (quick validation)
-        run: go build -v ./boldkit
+        run: go build -v -o boldkit-binary ./boldkit
 
   build:
     name: Build
