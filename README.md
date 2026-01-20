@@ -88,11 +88,17 @@ Run the pipeline on any snapshot (e.g., `BOLD_Public.2023-xx`, `BOLD_Public.2024
 - Each release should record the BOLD snapshot ID and the pipeline commit hash for reproducibility.
 
 ## Data citation
-If you use these databases, cite the BOLD snapshot, e.g.:
+Users are strongly encouraged to cite data retrieved from BOLD and the tools
+used in this pipeline.
 
-BOLD DNA Barcode Reference Library  
-Release 26-SEP-2025  
-https://doi.org/10.5883/DP-BOLD_Public.26-Sep-2025
+Ratnasingham, Sujeevan, and Paul D N Hebert. "BOLD: The Barcode of Life Data System (http://www.barcodinglife.org)." Molecular Ecology Notes 7(3) (2007): 355-364. doi:10.1111/j.1471-8286.2007.01678.x
+
+BOLD snapshot DOI: https://doi.org/10.5883/DP-BOLD_Public.26-Sep-2025
+
+TaxonKit paper: https://doi.org/10.1016/j.jgg.2021.03.006
+
+BoldKit DOI: pending (in progress). For now, cite this repository:  
+https://github.com/Doomsbay/boldkit
 
 ## License
 The source code in this repository is licensed under the MIT License.
