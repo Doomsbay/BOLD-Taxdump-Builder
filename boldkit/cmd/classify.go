@@ -97,13 +97,9 @@ func runClassify(args []string) {
 
 func qcBaseName(path string) string {
 	base := filepath.Base(path)
-	if strings.HasSuffix(base, ".gz") {
-		base = strings.TrimSuffix(base, ".gz")
-	}
+	base = strings.TrimSuffix(base, ".gz")
 	ext := filepath.Ext(base)
-	if ext != "" {
-		base = strings.TrimSuffix(base, ext)
-	}
+	base = strings.TrimSuffix(base, ext)
 	if base == "" {
 		return "qc_output"
 	}
