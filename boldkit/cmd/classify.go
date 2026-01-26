@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"flag"
-	"fmt"
 	"path/filepath"
 	"strings"
 )
