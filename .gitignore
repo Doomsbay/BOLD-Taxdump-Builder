@@ -1,4 +1,8 @@
 BOLD_Public.26-Sep-2025/
+taxonkit_input.tsv
 releases/
 boldkit/dist
 boldkit/binaries
+bold-taxdump/
+classifier_outputs/
+marker_fastas/
