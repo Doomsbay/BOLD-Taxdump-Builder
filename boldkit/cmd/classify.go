@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"flag"
+	"fmt"
 	"path/filepath"
 	"strings"
 )
@@ -11,6 +12,8 @@ func runClassify(args []string) {
 	input := fs.String("input", "", "Input FASTA/FASTA.gz")
 	outDir := fs.String("outdir", "classifier_outputs", "Output directory")
 	classifiers := fs.String("classifier", "blast", "Comma-separated classifiers")
+	markerDir := fs.String("marker-dir", "marker_fastas", "Marker FASTA directory (used when -input is empty)")
+	markers := fs.String("markers", "COI-5P", "Comma-separated markers to process (used when -input is empty)")
 	taxdumpDir := fs.String("taxdump-dir", "bold-taxdump", "Taxdump directory with nodes.dmp/names.dmp/taxid.map")
 	taxidMap := fs.String("taxid-map", "", "Optional taxid.map override")
 	requireRanks := fs.String("require-ranks", "kingdom,phylum,class,order,family,genus,species", "Comma-separated ranks required to keep a sequence (empty disables)")
@@ -30,40 +33,60 @@ func runClassify(args []string) {
 		fatalf("parse args failed: %v", err)
 	}
 
-	if *input == "" {
-		fatalf("input is required")
-	}
-
 	ranks := splitList(*requireRanks)
 	classifierList := splitList(*classifiers)
 	if len(classifierList) == 0 {
 		fatalf("classifier must not be empty")
 	}
 
-	base := qcBaseName(*input)
-	qcOut := filepath.Join(*outDir, "qc", base+".fasta")
+	if *input == "" {
+		markerList := splitList(*markers)
+		if len(markerList) == 0 {
+			fatalf("input is empty and markers list is empty")
+		}
+		for _, marker := range markerList {
+			markerInput, err := resolveMarkerInput(*markerDir, marker)
+			if err != nil {
+				fatalf("marker %s: %v", marker, err)
+			}
+			baseOut := filepath.Join(*outDir, safeTag(marker))
+			if err := classifyOne(markerInput, baseOut, classifierList, ranks, *taxdumpDir, *taxidMap, *qcMin, *qcMax, *qcMaxN, *qcMaxAmbig, *qcMaxInvalid, *qcDedupe, *qcDedupeIDs, *qcProgress, *formatProgress, *qcOnly, *compress, *force); err != nil {
+				fatalf("classify %s failed: %v", marker, err)
+			}
+		}
+		return
+	}
+
+	if err := classifyOne(*input, *outDir, classifierList, ranks, *taxdumpDir, *taxidMap, *qcMin, *qcMax, *qcMaxN, *qcMaxAmbig, *qcMaxInvalid, *qcDedupe, *qcDedupeIDs, *qcProgress, *formatProgress, *qcOnly, *compress, *force); err != nil {
+		fatalf("classify failed: %v", err)
+	}
+}
+
+func classifyOne(input, outDir string, classifierList, ranks []string, taxdumpDir, taxidMap string, qcMin, qcMax, qcMaxN, qcMaxAmbig, qcMaxInvalid int, qcDedupe, qcDedupeIDs, qcProgress, formatProgress, qcOnly, compress, force bool) error {
+	base := qcBaseName(input)
+	qcOut := filepath.Join(outDir, "qc", base+".fasta")
 	qcCfg := qcConfig{
-		MinLen:       *qcMin,
-		MaxLen:       *qcMax,
-		MaxN:         *qcMaxN,
-		MaxAmbig:     *qcMaxAmbig,
-		MaxInvalid:   *qcMaxInvalid,
-		DedupeSeqs:   *qcDedupe,
-		DedupeIDs:    *qcDedupeIDs,
+		MinLen:       qcMin,
+		MaxLen:       qcMax,
+		MaxN:         qcMaxN,
+		MaxAmbig:     qcMaxAmbig,
+		MaxInvalid:   qcMaxInvalid,
+		DedupeSeqs:   qcDedupe,
+		DedupeIDs:    qcDedupeIDs,
 		RequireRanks: ranks,
-		TaxdumpDir:   *taxdumpDir,
-		TaxidMapPath: *taxidMap,
+		TaxdumpDir:   taxdumpDir,
+		TaxidMapPath: taxidMap,
 		OutputPath:   qcOut,
-		Progress:     *qcProgress,
+		Progress:     qcProgress,
 	}
 
 	logf("QC -> %s", qcOut)
-	if err := qcFasta(*input, qcCfg); err != nil {
-		fatalf("qc failed: %v", err)
+	if err := qcFasta(input, qcCfg); err != nil {
+		return fmt.Errorf("qc failed: %w", err)
 	}
 
-	if *qcOnly {
-		return
+	if qcOnly {
+		return nil
 	}
 
 	for _, classifier := range classifierList {
@@ -71,28 +94,29 @@ func runClassify(args []string) {
 			continue
 		}
 		name := strings.ToLower(classifier)
-		outPath := filepath.Join(*outDir, name)
+		outPath := filepath.Join(outDir, name)
 		cfg := formatConfig{
 			Classifiers:  []string{name},
 			RequireRanks: ranks,
 			Input:        qcOut,
 			OutDir:       outPath,
-			TaxdumpDir:   *taxdumpDir,
-			TaxidMapPath: *taxidMap,
-			Progress:     *formatProgress,
+			TaxdumpDir:   taxdumpDir,
+			TaxidMapPath: taxidMap,
+			Progress:     formatProgress,
 		}
 		logf("Format %s -> %s", name, outPath)
 		if err := formatFasta(cfg); err != nil {
-			fatalf("format %s failed: %v", name, err)
+			return fmt.Errorf("format %s failed: %w", name, err)
 		}
 
-		if *compress {
-			archive := filepath.Join(*outDir, name+".tar.gz")
-			if err := packageDirGzip(outPath, archive, *force); err != nil {
-				fatalf("compress %s failed: %v", name, err)
+		if compress {
+			archive := filepath.Join(outDir, name+".tar.gz")
+			if err := packageDirGzip(outPath, archive, force); err != nil {
+				return fmt.Errorf("compress %s failed: %w", name, err)
 			}
 		}
 	}
+	return nil
 }
 
 func qcBaseName(path string) string {
@@ -104,4 +128,22 @@ func qcBaseName(path string) string {
 		return "qc_output"
 	}
 	return base
+}
+
+func resolveMarkerInput(markerDir, marker string) (string, error) {
+	if markerDir == "" {
+		return "", fmt.Errorf("marker-dir is required")
+	}
+	if marker == "" {
+		return "", fmt.Errorf("marker is empty")
+	}
+	gz := filepath.Join(markerDir, marker+".fasta.gz")
+	if fileExists(gz) {
+		return gz, nil
+	}
+	raw := filepath.Join(markerDir, marker+".fasta")
+	if fileExists(raw) {
+		return raw, nil
+	}
+	return "", fmt.Errorf("marker FASTA not found (%s or %s)", gz, raw)
 }
