@@ -12,8 +12,5 @@ All notable changes to this project will be documented in this file.
 - Approximate progress bars for `qc` and `format`.
 - Bash wrapper `scripts/07_classifier_pipeline.sh` with COI-5P defaults.
 
-### Changed
-- Default classifier for `classify` is BLAST.
-
 ### Documentation
 - Wiki updates for QC, format, classify, and the classifier pipeline script.
