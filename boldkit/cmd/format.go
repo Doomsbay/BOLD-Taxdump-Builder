@@ -377,21 +377,6 @@ func buildLineage(lineage map[string]string, ranks []string) []string {
 	return out
 }
 
-func buildLineageRaw(lineage map[string]string, ranks []string) []string {
-	if len(ranks) == 0 {
-		return nil
-	}
-	out := make([]string, 0, len(ranks))
-	for _, rank := range ranks {
-		name := lineage[rank]
-		if name == "" {
-			return nil
-		}
-		out = append(out, name)
-	}
-	return out
-}
-
 func sintaxLineage(names []string) string {
 	prefixes := []string{"d", "p", "c", "o", "f", "g", "s"}
 	parts := make([]string, 0, len(names))
