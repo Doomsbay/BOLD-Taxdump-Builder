@@ -15,9 +15,9 @@ type taxNode struct {
 }
 
 type taxDump struct {
-	nodes  map[int]taxNode
-	cache  map[int]map[string]string
-	alias  map[string]string
+	nodes map[int]taxNode
+	cache map[int]map[string]string
+	alias map[string]string
 }
 
 func loadTaxDump(nodesPath, namesPath string) (*taxDump, error) {

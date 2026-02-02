@@ -9,8 +9,8 @@ import (
 )
 
 type fastaRecord struct {
-	id   string
-	seq  []byte
+	id  string
+	seq []byte
 }
 
 func parseFasta(r io.Reader, onRecord func(fastaRecord) error) error {

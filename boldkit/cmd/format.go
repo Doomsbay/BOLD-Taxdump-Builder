@@ -11,7 +11,7 @@ import (
 )
 
 type formatConfig struct {
-	Classifiers []string
+	Classifiers  []string
 	RequireRanks []string
 	Input        string
 	OutDir       string
@@ -46,7 +46,7 @@ func runFormat(args []string) {
 		fatalf("input is required")
 	}
 	cfg := formatConfig{
-		Classifiers: splitList(*classifiers),
+		Classifiers:  splitList(*classifiers),
 		RequireRanks: splitList(*requireRanks),
 		Input:        *input,
 		OutDir:       *outDir,

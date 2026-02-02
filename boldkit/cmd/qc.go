@@ -13,19 +13,19 @@ import (
 )
 
 type qcConfig struct {
-	MinLen        int
-	MaxLen        int
-	MaxN          int
-	MaxAmbig      int
-	MaxInvalid    int
-	DedupeSeqs    bool
-	DedupeIDs     bool
-	RequireRanks  []string
-	TaxdumpDir    string
-	TaxidMapPath  string
-	OutputPath    string
-	ReportPath    string
-	Progress      bool
+	MinLen       int
+	MaxLen       int
+	MaxN         int
+	MaxAmbig     int
+	MaxInvalid   int
+	DedupeSeqs   bool
+	DedupeIDs    bool
+	RequireRanks []string
+	TaxdumpDir   string
+	TaxidMapPath string
+	OutputPath   string
+	ReportPath   string
+	Progress     bool
 }
 
 type qcStats struct {
