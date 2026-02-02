@@ -3,6 +3,7 @@ package cmd
 import (
 	"bufio"
 	"crypto/md5"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -14,15 +15,41 @@ import (
 const unseenClassCutoff = 51
 
 type splitStats struct {
-	TotalRecords  int
-	TotalClasses  int
-	SeenClasses   int
-	UnseenClasses int
+	TotalRecords     int `json:"total_records"`
+	TotalClasses     int `json:"total_classes"`
+	SeenClasses      int `json:"seen_classes"`
+	UnseenClasses    int `json:"unseen_classes"`
+	SeenTrainRecords int `json:"seen_train_records"`
+	SeenValRecords   int `json:"seen_val_records"`
+	SeenTestRecords  int `json:"seen_test_records"`
+	UnseenTest       int `json:"unseen_test_records"`
+	UnseenVal        int `json:"unseen_val_records"`
+	UnseenKey        int `json:"unseen_key_records"`
+}
+
+type splitReport struct {
+	Input       string     `json:"input"`
+	OutDir      string     `json:"out_dir"`
+	Classifiers []string   `json:"classifiers"`
+	PrunedTaxa  int        `json:"pruned_taxids"`
+	Stats       splitStats `json:"stats"`
+}
+
+type splitQCConfig struct {
+	Enabled    bool
+	MinLen     int
+	MaxLen     int
+	MaxN       int
+	MaxAmbig   int
+	MaxInvalid int
+	DedupeSeqs bool
+	DedupeIDs  bool
+	Progress   bool
 }
 
 func runSplit(args []string) {
 	fs := flag.NewFlagSet("split", flag.ExitOnError)
-	input := fs.String("input", "", "Input FASTA/FASTA.gz (QC output)")
+	input := fs.String("input", "", "Input FASTA/FASTA.gz")
 	outDir := fs.String("outdir", "splits", "Output directory")
 	markerDir := fs.String("marker-dir", "marker_fastas", "Marker FASTA directory (used when -input is empty)")
 	markers := fs.String("markers", "COI-5P", "Comma-separated markers to process (used when -input is empty)")
@@ -31,6 +58,15 @@ func runSplit(args []string) {
 	taxidMap := fs.String("taxid-map", "", "Optional taxid.map override")
 	taxonkitIn := fs.String("taxonkit-input", "taxonkit_input.tsv", "Taxonkit TSV with processid/species labels")
 	requireRanks := fs.String("require-ranks", "kingdom,phylum,class,order,family,genus,species", "Comma-separated ranks required to keep a sequence (empty disables)")
+	runQC := fs.Bool("run-qc", true, "Run QC before splitting")
+	qcMin := fs.Int("qc-min-length", 200, "QC minimum cleaned length")
+	qcMax := fs.Int("qc-max-length", 700, "QC maximum cleaned length")
+	qcMaxN := fs.Int("qc-max-n", 0, "QC maximum N count")
+	qcMaxAmbig := fs.Int("qc-max-ambig", 0, "QC maximum IUPAC ambiguous count")
+	qcMaxInvalid := fs.Int("qc-max-invalid", 0, "QC maximum invalid character count")
+	qcDedupe := fs.Bool("qc-dedupe", true, "QC drop duplicate sequences")
+	qcDedupeIDs := fs.Bool("qc-dedupe-ids", true, "QC drop duplicate IDs")
+	qcProgress := fs.Bool("qc-progress", true, "Show QC progress bar (approximate)")
 	formatProgress := fs.Bool("format-progress", true, "Show format progress bar (approximate)")
 	if err := fs.Parse(args); err != nil {
 		fatalf("parse args failed: %v", err)
@@ -40,6 +76,17 @@ func runSplit(args []string) {
 	classifierList := splitList(*classifiers)
 	if len(classifierList) == 0 {
 		fatalf("classifier must not be empty")
+	}
+	qcCfg := splitQCConfig{
+		Enabled:    *runQC,
+		MinLen:     *qcMin,
+		MaxLen:     *qcMax,
+		MaxN:       *qcMaxN,
+		MaxAmbig:   *qcMaxAmbig,
+		MaxInvalid: *qcMaxInvalid,
+		DedupeSeqs: *qcDedupe,
+		DedupeIDs:  *qcDedupeIDs,
+		Progress:   *qcProgress,
 	}
 
 	if *input == "" {
@@ -53,30 +100,52 @@ func runSplit(args []string) {
 				fatalf("marker %s: %v", marker, err)
 			}
 			baseOut := filepath.Join(*outDir, safeTag(marker))
-			if err := splitOne(markerInput, baseOut, *taxonkitIn, ranks, classifierList, *taxdumpDir, *taxidMap, *formatProgress); err != nil {
+			if err := splitOne(markerInput, baseOut, *taxonkitIn, ranks, classifierList, *taxdumpDir, *taxidMap, qcCfg, *formatProgress); err != nil {
 				fatalf("split %s failed: %v", marker, err)
 			}
 		}
 		return
 	}
 
-	if err := splitOne(*input, *outDir, *taxonkitIn, ranks, classifierList, *taxdumpDir, *taxidMap, *formatProgress); err != nil {
+	if err := splitOne(*input, *outDir, *taxonkitIn, ranks, classifierList, *taxdumpDir, *taxidMap, qcCfg, *formatProgress); err != nil {
 		fatalf("split failed: %v", err)
 	}
 }
 
-func splitOne(input, outDir, taxonkitIn string, ranks, classifiers []string, taxdumpDir, taxidMap string, formatProgress bool) error {
+func splitOne(input, outDir, taxonkitIn string, ranks, classifiers []string, taxdumpDir, taxidMap string, qcCfg splitQCConfig, formatProgress bool) error {
+	splitInput := input
+	if qcCfg.Enabled {
+		qcOut := filepath.Join(outDir, "qc", qcBaseName(input)+".fasta")
+		logf("split: QC -> %s", qcOut)
+		if err := qcFasta(input, qcConfig{
+			MinLen:       qcCfg.MinLen,
+			MaxLen:       qcCfg.MaxLen,
+			MaxN:         qcCfg.MaxN,
+			MaxAmbig:     qcCfg.MaxAmbig,
+			MaxInvalid:   qcCfg.MaxInvalid,
+			DedupeSeqs:   qcCfg.DedupeSeqs,
+			DedupeIDs:    qcCfg.DedupeIDs,
+			RequireRanks: ranks,
+			TaxdumpDir:   taxdumpDir,
+			TaxidMapPath: taxidMap,
+			OutputPath:   qcOut,
+			Progress:     qcCfg.Progress,
+		}); err != nil {
+			return fmt.Errorf("qc failed: %w", err)
+		}
+		splitInput = qcOut
+	}
 
 	labels, err := loadProcessLabelMap(taxonkitIn)
 	if err != nil {
 		return err
 	}
-	assignments, stats, err := buildSplitAssignments(input, labels)
+	assignments, stats, err := buildSplitAssignments(splitInput, labels)
 	if err != nil {
 		return err
 	}
 
-	if err := writeSplitFastas(input, outDir, assignments); err != nil {
+	if err := writeSplitFastas(splitInput, outDir, assignments); err != nil {
 		return err
 	}
 	prunedDir, keptTaxids, err := pruneTaxdumpForSeenTrain(assignments, taxdumpDir, taxidMap, outDir)
@@ -101,6 +170,17 @@ func splitOne(input, outDir, taxonkitIn string, ranks, classifiers []string, tax
 
 	logf("split: records=%d classes=%d seen-classes=%d unseen-classes=%d", stats.TotalRecords, stats.TotalClasses, stats.SeenClasses, stats.UnseenClasses)
 	logf("split: pruned taxdump -> %s (kept_taxids=%d)", prunedDir, keptTaxids)
+	reportPath := filepath.Join(outDir, "split_report.json")
+	if err := writeSplitReport(reportPath, splitReport{
+		Input:       splitInput,
+		OutDir:      outDir,
+		Classifiers: classifiers,
+		PrunedTaxa:  keptTaxids,
+		Stats:       stats,
+	}); err != nil {
+		return err
+	}
+	logf("split: report -> %s", reportPath)
 	return nil
 }
 
@@ -220,6 +300,7 @@ func buildSplitAssignments(input string, labels map[string]string) (map[string]s
 		assignRange(assignments, ordered, testN, testN+valN, "seen_val")
 		assignRange(assignments, ordered, testN+valN, testN+valN+trainN, "seen_train")
 	}
+	countBuckets(assignments, &stats)
 
 	return assignments, stats, nil
 }
@@ -373,6 +454,41 @@ func assignRange(assignments map[string]string, ids []string, start, end int, bu
 	for i := start; i < end; i++ {
 		assignments[ids[i]] = bucket
 	}
+}
+
+func countBuckets(assignments map[string]string, stats *splitStats) {
+	for _, bucket := range assignments {
+		switch bucket {
+		case "seen_train":
+			stats.SeenTrainRecords++
+		case "seen_val":
+			stats.SeenValRecords++
+		case "seen_test":
+			stats.SeenTestRecords++
+		case "unseen_test":
+			stats.UnseenTest++
+		case "unseen_val":
+			stats.UnseenVal++
+		case "unseen_key":
+			stats.UnseenKey++
+		}
+	}
+}
+
+func writeSplitReport(path string, report splitReport) error {
+	f, err := os.Create(path)
+	if err != nil {
+		return fmt.Errorf("create split report: %w", err)
+	}
+	defer func() {
+		_ = f.Close()
+	}()
+	enc := json.NewEncoder(f)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(report); err != nil {
+		return fmt.Errorf("write split report: %w", err)
+	}
+	return nil
 }
 
 func pruneTaxdumpForSeenTrain(assignments map[string]string, taxdumpDir, taxidMapPath, outDir string) (string, int, error) {
