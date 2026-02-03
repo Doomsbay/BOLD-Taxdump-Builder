@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.3.0] - 2026-02-02
+
+### Added
+- New `split` command for open/closed-world library generation.
+- End-to-end split workflow: optional QC, deterministic split assignment, taxdump pruning from `seen_train`, and classifier library formatting.
+- New split outputs per marker: `seen_train/val/test`, `test_unseen/val_unseen/keys_unseen`, `other_heldout`, `pretrain`.
+- New `split_report.json` with class/record counts and pruned taxid summary.
+
+### Documentation
+- Wiki `Usage` expanded with full `split` command documentation and a dedicated full pipeline + split workflow section.
+- Added PROTAX status note in docs (currently under review while evaluating PROTAX-GPU and reference intake/build requirements).
+
 ## [v0.2.1] - 2026-01-27
 
 ### Added
