@@ -9,6 +9,14 @@ All notable changes to this project will be documented in this file.
 - BIOSCAN extraction engine with placeholder normalization, genus/species consistency fixes, subfamily hole filling, BIN-aware canonical species reuse, and deterministic BIN conflict handling.
 - Optional extraction curation trace outputs: JSON summary report and per-record audit TSV.
 - Unit tests for BIOSCAN species parsing/resolution, conflict policy behavior, protocol fallback behavior, and report/audit generation.
+- BIOSCAN BIN canonical species transfer applies only when a BIN has a single resolved species or a strict majority winner; tie/no-majority BINs are treated as conflicted.
+- In `bioscan-5m` mode, provisional species fallback does not use `PROCESSID`; provisional labels require BIN.
+- Usage details and examples are documented in wiki `Usage` and `Splits-and-BIOSCAN-5M`.
+
+### Documentation
+- README kept concise with a short BIOSCAN curation note and link to detailed workflow docs.
+- Added new wiki page: `Splits-and-BIOSCAN-5M` (end-to-end BIOSCAN extraction curation + split workflow details).
+- Updated wiki Home/Usage links to include the new BIOSCAN + split workflow page.
 
 ## [v0.3.0] - 2026-02-02
 
