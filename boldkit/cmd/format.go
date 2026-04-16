@@ -10,6 +10,7 @@ import (
 	"strings"
 )
 
+
 type formatConfig struct {
 	Classifiers  []string
 	RequireRanks []string
@@ -41,7 +42,6 @@ func runFormat(args []string) {
 	if err := fs.Parse(args); err != nil {
 		fatalf("parse args failed: %v", err)
 	}
-
 	if *input == "" {
 		fatalf("input is required")
 	}
@@ -73,8 +73,8 @@ type formatWriters struct {
 	blastMap      writerHandle
 	krakenFasta   writerHandle
 	sintaxFasta   writerHandle
-	rdpFasta      writerHandle
-	rdpLineage    writerHandle
+	rdpTrainFasta  writerHandle
+	rdpTaxonomy   writerHandle
 	idtaxaFasta   writerHandle
 	idtaxaLineage writerHandle
 	protaxFasta   writerHandle
@@ -174,16 +174,7 @@ func formatFasta(cfg formatConfig) error {
 				return err
 			}
 		}
-		if writers.rdpFasta.w != nil {
-			if err := writeFasta(writers.rdpFasta.w, rec.id, seq); err != nil {
-				return err
-			}
-		}
-		if writers.rdpLineage.w != nil {
-			if _, err := writers.rdpLineage.w.WriteString(rec.id + "\t" + strings.Join(names, "\t") + "\n"); err != nil {
-				return fmt.Errorf("write rdp lineage: %w", err)
-			}
-		}
+		// RDP is handled separately in formatFastaRdp
 		if writers.idtaxaFasta.w != nil {
 			if err := writeFasta(writers.idtaxaFasta.w, rec.id, seq); err != nil {
 				return err
@@ -219,6 +210,13 @@ func formatFasta(cfg formatConfig) error {
 		bar.Finish()
 	}
 
+	// Handle RDP separately with two-pass approach
+	if writers.rdpTrainFasta.w != nil {
+		if err := formatFastaRdp(cfg, taxidMap, dump, writers); err != nil {
+			return fmt.Errorf("rdp format: %w", err)
+		}
+	}
+
 	if cfg.ReportPath != "" {
 		if err := writeQCReport(cfg.ReportPath, qcStats{
 			Total:        stats.Total,
@@ -230,6 +228,120 @@ func formatFasta(cfg formatConfig) error {
 		}
 	}
 	logf("format: total=%d kept=%d missing-taxid=%d missing-ranks=%d", stats.Total, stats.Written, stats.MissingTaxID, stats.MissingRanks)
+	return nil
+}
+
+// formatFastaRdp handles RDP-native output with two-pass processing
+func formatFastaRdp(cfg formatConfig, taxidMap map[string]int, dump *taxDump, writers *formatWriters) error {
+	// Create temp file for sequences
+	tmpFasta, err := os.CreateTemp("", "rdp_seqs_*.fasta")
+	if err != nil {
+		return fmt.Errorf("create temp file: %w", err)
+	}
+	tmpPath := tmpFasta.Name()
+	defer func() {
+		_ = tmpFasta.Close()
+		_ = os.Remove(tmpPath)
+	}()
+
+	tmpWriter := bufio.NewWriterSize(tmpFasta, writerBufferSize)
+
+	// Pass 1: collect lineages and write sequences to temp file
+	builder := newRdpTaxonomyBuilder(cfg.RequireRanks)
+	var seqCount int
+
+	in, err := openInput(cfg.Input)
+	if err != nil {
+		return fmt.Errorf("open input for rdp: %w", err)
+	}
+	defer func() {
+		_ = in.Close()
+	}()
+
+	err = parseFasta(in, func(rec fastaRecord) error {
+		if rec.id == "" {
+			return nil
+		}
+		taxid, ok := taxidMap[rec.id]
+		if !ok {
+			return nil
+		}
+		lineage := dump.lineage(taxid)
+		if !hasAllRanks(lineage, cfg.RequireRanks) {
+			return nil
+		}
+
+		names := buildLineage(lineage, cfg.RequireRanks)
+		if len(names) == 0 {
+			return nil
+		}
+
+		// Add lineage to taxonomy builder
+		resolved := builder.addLineage(names)
+		if len(resolved) == 0 {
+			return nil
+		}
+
+		// Write to temp file: seqid\tlineage_keys\tsequence
+		lineageStr := strings.Join(resolved, "|")
+		if _, err := tmpWriter.WriteString(rec.id + "\t" + lineageStr + "\t" + string(rec.seq) + "\n"); err != nil {
+			return fmt.Errorf("write temp: %w", err)
+		}
+		seqCount++
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	if err := tmpWriter.Flush(); err != nil {
+		return fmt.Errorf("flush temp: %w", err)
+	}
+	_ = tmpFasta.Close()
+
+	// Log disambiguation count
+	if builder.disambiguatedCount() > 0 {
+		logf("rdp: disambiguated %d taxonomy names due to parent conflicts", builder.disambiguatedCount())
+	}
+
+	// Write taxonomy file
+	if err := builder.writeTaxonomyFile(writers.rdpTaxonomy.w); err != nil {
+		return fmt.Errorf("write taxonomy: %w", err)
+	}
+
+	// Pass 2: read temp file and write final FASTA with resolved lineages
+	tmpIn, err := os.Open(tmpPath)
+	if err != nil {
+		return fmt.Errorf("open temp: %w", err)
+	}
+	defer func() {
+		_ = tmpIn.Close()
+	}()
+
+	scanner := bufio.NewScanner(tmpIn)
+	buf := make([]byte, 0, 1024*1024)
+	scanner.Buffer(buf, 10*1024*1024)
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		parts := strings.SplitN(line, "\t", 3)
+		if len(parts) != 3 {
+			continue
+		}
+		seqID := parts[0]
+		keys := strings.Split(parts[1], "|")
+		seq := parts[2]
+
+		// Build lineage string from resolved keys
+		lineageNames := builder.getLineageString(keys)
+		header := seqID + "\t" + lineageNames
+		if err := writeFasta(writers.rdpTrainFasta.w, header, []byte(seq)); err != nil {
+			return err
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("scan temp: %w", err)
+	}
+
 	return nil
 }
 
@@ -289,16 +401,16 @@ func openFormatWriters(outDir string, classifiers []string) (*formatWriters, err
 		w.sintaxFasta = bw
 	}
 	if _, ok := needs["rdp"]; ok {
-		bw, err := openFasta("rdp_seqs.fasta")
+		bw, err := openFasta("rdp_train_seqs.fasta")
 		if err != nil {
 			return nil, err
 		}
-		tw, err := openText("rdp_lineage.tsv")
+		tw, err := openText("rdp_taxonomy.txt")
 		if err != nil {
 			return nil, err
 		}
-		w.rdpFasta = bw
-		w.rdpLineage = tw
+		w.rdpTrainFasta = bw
+		w.rdpTaxonomy = tw
 	}
 	if _, ok := needs["idtaxa"]; ok {
 		bw, err := openFasta("idtaxa_seqs.fasta")
@@ -341,8 +453,8 @@ func closeFormatWriters(w *formatWriters) {
 	flush(w.blastMap)
 	flush(w.krakenFasta)
 	flush(w.sintaxFasta)
-	flush(w.rdpFasta)
-	flush(w.rdpLineage)
+	flush(w.rdpTrainFasta)
+	flush(w.rdpTaxonomy)
 	flush(w.idtaxaFasta)
 	flush(w.idtaxaLineage)
 	flush(w.protaxFasta)

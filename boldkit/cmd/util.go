@@ -139,7 +139,7 @@ func countLines(path string) (int, error) {
 			return 0, err
 		}
 	}
-	if lastByte != '\n' && count > 0 {
+	if lastByte != '\n' && lastByte != 0 {
 		count++
 	}
 	return count, nil
