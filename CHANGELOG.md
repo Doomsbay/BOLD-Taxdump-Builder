@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.4.1]
+
+### Added
+- RDP taxonomy support in the `format` command.
+
+### Fixed
+- `countLines` now correctly returns 1 for files with no trailing newline.
+- Fixed misleading indentation in PROTAX map writer block.
+
 ## [v0.4.0]
 
 ### Added
