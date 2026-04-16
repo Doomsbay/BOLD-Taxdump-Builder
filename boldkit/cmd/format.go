@@ -10,7 +10,6 @@ import (
 	"strings"
 )
 
-
 type formatConfig struct {
 	Classifiers  []string
 	RequireRanks []string
@@ -73,7 +72,7 @@ type formatWriters struct {
 	blastMap      writerHandle
 	krakenFasta   writerHandle
 	sintaxFasta   writerHandle
-	rdpTrainFasta  writerHandle
+	rdpTrainFasta writerHandle
 	rdpTaxonomy   writerHandle
 	idtaxaFasta   writerHandle
 	idtaxaLineage writerHandle
