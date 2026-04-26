@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+if [[ "${1:-}" == *.parquet || "${1:-}" == *.parq ]]; then
+  echo "Parquet input detected. Parquet support requires the boldkit Go binary." >&2
+  echo "Use: boldkit markers -input \"$1\"" >&2
+  exit 1
+fi
+
 input_tsv="${1:-./BOLD_Public.*/BOLD_Public.*.tsv}"
 output_dir="${2:-marker_fastas}"
 
@@ -51,6 +57,7 @@ spinner() {
 echo "Parsing BOLD snapshot and writing FASTA files..." >&2
 spinner &
 spinner_pid=$!
+trap 'kill $spinner_pid 2>/dev/null; wait $spinner_pid 2>/dev/null' EXIT
 
 awk -F'\t' -v OUTDIR="${output_dir}" -f - "${input_tsv}" <<'AWK'
 BEGIN{OFS="\n"}
@@ -79,7 +86,7 @@ NR==1{
   if(length(seq)<1) next;
 
   out=OUTDIR "/" m ".fasta";
-  print ">"$(pid), toupper(seq) >> out;
+  print ">"$(pid), toupper(seq) > out;
 
 }
 AWK

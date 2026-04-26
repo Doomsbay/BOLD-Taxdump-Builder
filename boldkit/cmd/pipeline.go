@@ -6,6 +6,7 @@ import (
 	"compress/gzip"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -20,7 +21,7 @@ import (
 
 func runPipeline(args []string) {
 	fs := flag.NewFlagSet("pipeline", flag.ExitOnError)
-	input := fs.String("input", "BOLD_Public.*/BOLD_Public.*.tsv", "BOLD TSV input")
+	input := fs.String("input", "BOLD_Public.*/BOLD_Public.*.tsv", "BOLD input file (TSV or Parquet)")
 	taxonkitOut := fs.String("taxonkit-output", "taxonkit_input.tsv", "Output taxonkit input TSV")
 	taxdumpDir := fs.String("taxdump-dir", "bold-taxdump", "Output taxdump directory")
 	markerDir := fs.String("marker-dir", "marker_fastas", "Output marker FASTA directory")
@@ -56,13 +57,11 @@ func runPipeline(args []string) {
 
 	totalRows := -1
 	if *progressOn {
-		count, err := countLines(*input)
+		count, err := RowCount(*input)
 		if err != nil {
 			fatalf("count rows failed: %v", err)
 		}
-		if count > 0 {
-			totalRows = count - 1
-		}
+		totalRows = int(count)
 	}
 
 	reportEvery := 0
@@ -76,6 +75,7 @@ func runPipeline(args []string) {
 }
 
 func pipeline(input, taxonkitOut, taxdumpDir, markerDir, releaseDir, taxonkitBin string, reportEvery, totalRows, workers int, gzipOut, force, doPackage, skipManifest, skipChecksums bool, snapshot string, extractCfg extractCurationConfig) error {
+	logf("Input format: %s", InputFormat(input))
 	logf("Extract taxonomy -> %s", taxonkitOut)
 	if fileExists(taxonkitOut) && !force {
 		logf("taxonkit TSV exists, skipping (use --force to overwrite): %s", taxonkitOut)
@@ -426,20 +426,31 @@ func writeManifest(path, taxdumpDir, markerDir, snapshot string, force bool) err
 		return err
 	}
 
-	data := fmt.Sprintf(`{
-  "snapshot_id": "%s",
-  "commit_hash": "%s",
-  "counts": {
-    "nodes": %d,
-    "names": %d,
-    "taxid_map": %d,
-    "marker_fasta_files": %d,
-    "marker_fasta_sequences": %d
-  }
-}
-`, snapshot, commit, nodes, names, taxid, len(markerFiles), markerSeqs)
+	manifest := struct {
+		SnapshotID string `json:"snapshot_id"`
+		CommitHash string `json:"commit_hash"`
+		Counts     struct {
+			Nodes                int `json:"nodes"`
+			Names                int `json:"names"`
+			TaxidMap             int `json:"taxid_map"`
+			MarkerFastaFiles     int `json:"marker_fasta_files"`
+			MarkerFastaSequences int `json:"marker_fasta_sequences"`
+		} `json:"counts"`
+	}{
+		SnapshotID: snapshot,
+		CommitHash: commit,
+	}
+	manifest.Counts.Nodes = nodes
+	manifest.Counts.Names = names
+	manifest.Counts.TaxidMap = taxid
+	manifest.Counts.MarkerFastaFiles = len(markerFiles)
+	manifest.Counts.MarkerFastaSequences = markerSeqs
 
-	return os.WriteFile(path, []byte(data), 0o644)
+	data, err := json.MarshalIndent(manifest, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, append(data, '\n'), 0o644)
 }
 
 func gitCommitHash() (string, error) {

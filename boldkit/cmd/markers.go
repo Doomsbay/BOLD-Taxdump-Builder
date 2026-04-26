@@ -22,7 +22,7 @@ type markerWriter struct {
 
 func runMarkers(args []string) {
 	fs := flag.NewFlagSet("markers", flag.ExitOnError)
-	input := fs.String("input", "BOLD_Public.*/BOLD_Public.*.tsv", "BOLD TSV input")
+	input := fs.String("input", "BOLD_Public.*/BOLD_Public.*.tsv", "BOLD input file (TSV or Parquet)")
 	outDir := fs.String("outdir", "marker_fastas", "Output directory for marker FASTAs")
 	progressOn := fs.Bool("progress", true, "Show progress bar")
 	gzipOut := fs.Bool("gzip", true, "Compress FASTA outputs to .fasta.gz")
@@ -43,13 +43,11 @@ func runMarkers(args []string) {
 
 	totalRows := -1
 	if *progressOn {
-		count, err := countLines(*input)
+		count, err := RowCount(*input)
 		if err != nil {
 			fatalf("count rows failed: %v", err)
 		}
-		if count > 0 {
-			totalRows = count - 1
-		}
+		totalRows = int(count)
 	}
 
 	reportEvery := 0
@@ -63,14 +61,6 @@ func runMarkers(args []string) {
 }
 
 func buildMarkerFastas(inputPath, outDir string, gzipOut bool, reportEvery, totalRows, workers int) error {
-	in, err := openInput(inputPath)
-	if err != nil {
-		return fmt.Errorf("open input: %w", err)
-	}
-	defer func() {
-		_ = in.Close()
-	}()
-
 	writers := make(map[string]*markerWriter)
 	defer func() {
 		for _, w := range writers {
@@ -87,7 +77,6 @@ func buildMarkerFastas(inputPath, outDir string, gzipOut bool, reportEvery, tota
 		idxProcess = -1
 		idxMarker  = -1
 		idxNuc     = -1
-		headerSeen bool
 	)
 
 	opts := DefaultOptions()
@@ -120,9 +109,8 @@ func buildMarkerFastas(inputPath, outDir string, gzipOut bool, reportEvery, tota
 		},
 	}
 
-	err = ParseTSV(in, opts, func(row Row) error {
-		if !headerSeen {
-			headerSeen = true
+	err := ParseRows(inputPath, opts, func(row Row) error {
+		if idxProcess < 0 {
 			idxProcess = indexOfBytes(row.Fields, "processid")
 			idxMarker = indexOfBytes(row.Fields, "marker_code")
 			idxNuc = indexOfBytes(row.Fields, "nuc")

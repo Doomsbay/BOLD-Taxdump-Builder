@@ -2,6 +2,44 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.5.0]
+
+### Added
+- Parquet input support: `extract`, `markers`, and `pipeline` commands accept `.parquet` / `.parq` BOLD data files in addition to TSV.
+- Auto-detection of input format by file extension — zero configuration required.
+- `RowCount()` uses Parquet file metadata for instant row counts instead of line-scanning.
+- Unit tests for Parquet row counting and format detection.
+- Shell scripts `01_extract_taxonomy_from_bold.sh` and `03_build_marker_fastas.sh` now detect Parquet input and suggest the Go binary.
+
+### Changed
+- `extract` and `markers` refactored to use a unified `ParseRows()` API — both TSV and Parquet paths go through the same column-resolution logic.
+- Help text updated from "BOLD TSV input" to "BOLD input file (TSV or Parquet)" across all commands.
+- `pipeline` logs the detected input format on start.
+- Added `github.com/parquet-go/parquet-go` dependency for Parquet reading.
+
+## [v0.4.3]
+
+### Fixed
+- Shell scripts: AWK append mode (`>>`) changed to write mode (`>`) in `03_build_marker_fastas.sh` to prevent data duplication on re-runs.
+- Shell scripts: Replaced GNU-specific `find -printf` in `05_generate_checksums.sh` with portable alternative (macOS/BSD compatible).
+- Shell scripts: Fixed `repo_root` derivation in `06_generate_manifest.sh` to use `git rev-parse --show-toplevel`.
+- Shell scripts: JSON output in `06_generate_manifest.sh` now uses Python `json.dumps` to prevent malformed JSON.
+- Shell scripts: `subfamily` and `tribe` columns are now optional in `01_extract_taxonomy_from_bold.sh`.
+- Shell scripts: Extended null handling from `None` to also cover `NULL` and `NA` in `01_extract_taxonomy_from_bold.sh`.
+- Shell scripts: Directory existence checks in `04_package_reference_db.sh` are now conditional on whether the archive needs rebuilding.
+- Shell scripts: Spinner process cleanup in `03_build_marker_fastas.sh` now uses `trap` to prevent orphaned processes on error.
+- Shell scripts: Fixed help text in `boldkit.sh` referencing old name `bolddb-taxdump.sh`.
+- Go: Manifest JSON in `pipeline.go` now uses `encoding/json` instead of `fmt.Sprintf` string interpolation.
+- Go: Added depth guard (max 50) to recursive `disambiguate()` in `rdp_taxonomy.go` to prevent unbounded recursion.
+- Go: `fileExists()` now returns `true` for zero-byte files.
+- Go: Removed duplicate `openText` closure in `format.go` (consolidated to `openFasta`).
+- Go: `sintaxLineage()` now logs a warning when ranks beyond species are silently dropped.
+- Go: Removed unused `json` struct tags and dead `normalize()` function.
+
+### Changed
+- `.gitignore` updated with wildcard BOLD data patterns and `boldkit.wiki/`.
+- Added `.gitattributes` with `* text=auto` and `*.sh text eol=lf` to prevent line-ending drift.
+
 ## [v0.4.2]
 
 ### Added

@@ -11,8 +11,8 @@ import (
 )
 
 func fileExists(path string) bool {
-	info, err := os.Stat(path)
-	return err == nil && info.Size() > 0
+	_, err := os.Stat(path)
+	return err == nil
 }
 
 func outputsExist(outDir string) bool {
@@ -30,6 +30,12 @@ func outputsExist(outDir string) bool {
 
 func snapshotID(inputPath string) string {
 	base := filepath.Base(inputPath)
+	if strings.HasSuffix(base, ".parquet") {
+		return strings.TrimSuffix(base, ".parquet")
+	}
+	if strings.HasSuffix(base, ".parq") {
+		return strings.TrimSuffix(base, ".parq")
+	}
 	if strings.HasSuffix(base, ".tsv.gz") {
 		return strings.TrimSuffix(base, ".tsv.gz")
 	}
@@ -37,13 +43,6 @@ func snapshotID(inputPath string) string {
 		return strings.TrimSuffix(base, ".tsv")
 	}
 	return strings.TrimSuffix(base, filepath.Ext(base))
-}
-
-func normalize(value string) string {
-	if value == "None" {
-		return ""
-	}
-	return value
 }
 
 func normalizeBytes(value []byte) []byte {
@@ -56,6 +55,13 @@ func normalizeBytes(value []byte) []byte {
 func field(fields []string, idx int) string {
 	if idx < 0 || idx >= len(fields) {
 		return ""
+	}
+	return fields[idx]
+}
+
+func fieldBytes(fields [][]byte, idx int) []byte {
+	if idx < 0 || idx >= len(fields) {
+		return nil
 	}
 	return fields[idx]
 }

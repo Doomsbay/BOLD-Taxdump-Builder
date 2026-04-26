@@ -13,7 +13,7 @@ const writerBufferSize = 1 << 20
 
 func runExtract(args []string) {
 	fs := flag.NewFlagSet("extract", flag.ExitOnError)
-	input := fs.String("input", "BOLD_Public.*/BOLD_Public.*.tsv", "BOLD TSV input")
+	input := fs.String("input", "BOLD_Public.*/BOLD_Public.*.tsv", "BOLD input file (TSV or Parquet)")
 	output := fs.String("output", "taxonkit_input.tsv", "Output taxonkit input TSV")
 	curateProtocol := fs.String("curate-protocol", extractCurationProtocolNone, "Extraction curation profile (none,bioscan-5m)")
 	curateReport := fs.String("curate-report", "", "Optional extraction curation JSON report path")
@@ -39,13 +39,11 @@ func runExtract(args []string) {
 
 	totalRows := -1
 	if *progressOn {
-		count, err := countLines(*input)
+		count, err := RowCount(*input)
 		if err != nil {
 			fatalf("count rows failed: %v", err)
 		}
-		if count > 0 {
-			totalRows = count - 1
-		}
+		totalRows = int(count)
 	}
 
 	reportEvery := 0
@@ -59,13 +57,6 @@ func runExtract(args []string) {
 }
 
 func buildTaxonkit(inputPath, outputPath string, reportEvery, totalRows int, curationCfg extractCurationConfig) (int, error) {
-	in, err := openInput(inputPath)
-	if err != nil {
-		return 0, fmt.Errorf("open input: %w", err)
-	}
-	defer func() {
-		_ = in.Close()
-	}()
 	curator, err := newExtractCurator(curationCfg, inputPath)
 	if err != nil {
 		return 0, fmt.Errorf("create curation profile: %w", err)
@@ -84,60 +75,66 @@ func buildTaxonkit(inputPath, outputPath string, reportEvery, totalRows int, cur
 		_ = writer.Flush()
 	}()
 
-	scanner := bufio.NewScanner(in)
-	buf := make([]byte, 0, 1024*1024)
-	scanner.Buffer(buf, 50*1024*1024)
-
-	if !scanner.Scan() {
-		if err := scanner.Err(); err != nil {
-			return 0, fmt.Errorf("read header: %w", err)
-		}
-		return 0, errors.New("input TSV is empty")
-	}
-
-	header := strings.Split(scanner.Text(), "\t")
-	idxProcess := indexOf(header, "processid")
-	idxBin := indexOf(header, "bin_uri")
-	idxKingdom := indexOf(header, "kingdom")
-	idxPhylum := indexOf(header, "phylum")
-	idxClass := indexOf(header, "class")
-	idxOrder := indexOf(header, "order")
-	idxFamily := indexOf(header, "family")
-	idxSubfamily := indexOf(header, "subfamily")
-	idxTribe := indexOf(header, "tribe")
-	idxGenus := indexOf(header, "genus")
-	idxSpecies := indexOf(header, "species")
-	if idxProcess < 0 || idxBin < 0 || idxKingdom < 0 || idxPhylum < 0 || idxClass < 0 ||
-		idxOrder < 0 || idxFamily < 0 || idxSubfamily < 0 || idxTribe < 0 || idxGenus < 0 ||
-		idxSpecies < 0 {
-		return 0, errors.New("required headers missing in input TSV")
-	}
-
-	if _, err := writer.WriteString("kingdom\tphylum\tclass\torder\tfamily\tsubfamily\ttribe\tgenus\tspecies\tprocessid\n"); err != nil {
-		return 0, fmt.Errorf("write header: %w", err)
-	}
-
 	progress := newProgress(totalRows, reportEvery)
+
+	opts := DefaultOptions()
+	opts.Progress = progress
+	opts.SkipProgressFirstRow = true
+
 	var rowCount int
-	for scanner.Scan() {
+	var (
+		idxProcess   = -1
+		idxBin       = -1
+		idxKingdom   = -1
+		idxPhylum    = -1
+		idxClass     = -1
+		idxOrder     = -1
+		idxFamily    = -1
+		idxSubfamily = -1
+		idxTribe     = -1
+		idxGenus     = -1
+		idxSpecies   = -1
+	)
+
+	err = ParseRows(inputPath, opts, func(row Row) error {
+		if idxProcess < 0 {
+			idxProcess = indexOfBytes(row.Fields, "processid")
+			idxBin = indexOfBytes(row.Fields, "bin_uri")
+			idxKingdom = indexOfBytes(row.Fields, "kingdom")
+			idxPhylum = indexOfBytes(row.Fields, "phylum")
+			idxClass = indexOfBytes(row.Fields, "class")
+			idxOrder = indexOfBytes(row.Fields, "order")
+			idxFamily = indexOfBytes(row.Fields, "family")
+			idxSubfamily = indexOfBytes(row.Fields, "subfamily")
+			idxTribe = indexOfBytes(row.Fields, "tribe")
+			idxGenus = indexOfBytes(row.Fields, "genus")
+			idxSpecies = indexOfBytes(row.Fields, "species")
+			if idxProcess < 0 || idxBin < 0 || idxKingdom < 0 || idxPhylum < 0 || idxClass < 0 ||
+				idxOrder < 0 || idxFamily < 0 || idxGenus < 0 || idxSpecies < 0 {
+				return errors.New("required headers missing in input")
+			}
+			_, err := writer.WriteString("kingdom\tphylum\tclass\torder\tfamily\tsubfamily\ttribe\tgenus\tspecies\tprocessid\n")
+			return err
+		}
+
 		rowCount++
-		fields := strings.Split(scanner.Text(), "\t")
+		fields := row.Fields
 
 		record := extractTaxonRecord{
-			ProcessID: field(fields, idxProcess),
-			BinURI:    field(fields, idxBin),
-			Kingdom:   normalize(field(fields, idxKingdom)),
-			Phylum:    normalize(field(fields, idxPhylum)),
-			Class:     normalize(field(fields, idxClass)),
-			Order:     normalize(field(fields, idxOrder)),
-			Family:    normalize(field(fields, idxFamily)),
-			Subfamily: normalize(field(fields, idxSubfamily)),
-			Tribe:     normalize(field(fields, idxTribe)),
-			Genus:     normalize(field(fields, idxGenus)),
-			Species:   normalize(field(fields, idxSpecies)),
+			ProcessID: string(fieldBytes(fields, idxProcess)),
+			BinURI:    string(fieldBytes(fields, idxBin)),
+			Kingdom:   string(normalizeBytes(fieldBytes(fields, idxKingdom))),
+			Phylum:    string(normalizeBytes(fieldBytes(fields, idxPhylum))),
+			Class:     string(normalizeBytes(fieldBytes(fields, idxClass))),
+			Order:     string(normalizeBytes(fieldBytes(fields, idxOrder))),
+			Family:    string(normalizeBytes(fieldBytes(fields, idxFamily))),
+			Subfamily: string(normalizeBytes(fieldBytes(fields, idxSubfamily))),
+			Tribe:     string(normalizeBytes(fieldBytes(fields, idxTribe))),
+			Genus:     string(normalizeBytes(fieldBytes(fields, idxGenus))),
+			Species:   string(normalizeBytes(fieldBytes(fields, idxSpecies))),
 		}
 		if err := curator.Curate(&record); err != nil {
-			return 0, fmt.Errorf("line %d curation failed: %w", rowCount+1, err)
+			return fmt.Errorf("line %d curation failed: %w", rowCount+1, err)
 		}
 
 		if record.Genus != "" && record.Species == "" {
@@ -151,16 +148,17 @@ func buildTaxonkit(inputPath, outputPath string, reportEvery, totalRows int, cur
 		}
 
 		line := strings.Join([]string{
-			record.Kingdom, record.Phylum, record.Class, record.Order, record.Family, record.Subfamily, record.Tribe, record.Genus, record.Species, record.ProcessID,
+			record.Kingdom, record.Phylum, record.Class, record.Order, record.Family,
+			record.Subfamily, record.Tribe, record.Genus, record.Species, record.ProcessID,
 		}, "\t")
 		if _, err := writer.WriteString(line + "\n"); err != nil {
-			return 0, fmt.Errorf("write row: %w", err)
+			return fmt.Errorf("write row: %w", err)
 		}
 
-		progress.increment()
-	}
-	if err := scanner.Err(); err != nil {
-		return 0, fmt.Errorf("scan input: %w", err)
+		return nil
+	})
+	if err != nil {
+		return 0, err
 	}
 
 	progress.finish()

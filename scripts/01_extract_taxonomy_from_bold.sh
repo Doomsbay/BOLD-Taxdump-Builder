@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+if [[ "${1:-}" == *.parquet || "${1:-}" == *.parq ]]; then
+  echo "Parquet input detected. Parquet support requires the boldkit Go binary." >&2
+  echo "Use: boldkit extract -input \"$1\"" >&2
+  exit 1
+fi
+
 input_tsv="${1:-./BOLD_Public.*/BOLD_Public.*.tsv}"
 output_tsv="${2:-taxonkit_input.tsv}"
 
@@ -43,15 +49,17 @@ NR==1{
     if($i=="genus") genus=i;
     if($i=="species") species=i;
   }
-  if(!pid || !bin || !kingdom || !phylum || !class || !ord || !family || !subfamily || !tribe || !genus || !species){
+  if(!pid || !bin || !kingdom || !phylum || !class || !ord || !family || !genus || !species){
     print "Required headers missing in input TSV" > "/dev/stderr";
     exit 1;
   }
+  if(!subfamily) subfamily=-1;
+  if(!tribe) tribe=-1;
   print "kingdom","phylum","class","order","family","subfamily","tribe","genus","species","processid";
   next
 }
 {
-  for(i=1;i<=NF;i++) if($i=="None") $i="";
+  for(i=1;i<=NF;i++) if($i=="None" || $i=="NULL" || $i=="NA") $i="";
 
   pidv=$(pid);
   binv=$(bin);
@@ -60,8 +68,8 @@ NR==1{
   classv=$(class);
   ordv=$(ord);
   familyv=$(family);
-  subfamilyv=$(subfamily);
-  tribev=$(tribe);
+  subfamilyv=(subfamily>0 ? $(subfamily) : "");
+  tribev=(tribe>0 ? $(tribe) : "");
   genv=$(genus);
   specv=$(species);
 
